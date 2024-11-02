@@ -27,8 +27,9 @@ impl Editor {
                 continue;
             }
 
+            // https://www.gnu.org/software/ed/manual/ed_manual.html#Commands
             match line.chars().next().unwrap() {
-                // append
+                // insert after current line
                 'a' if line.len() == 1 => loop {
                     let line = self.read_line()?;
                     if line == "." {
@@ -37,6 +38,10 @@ impl Editor {
                     self.current += 1;
                     self.buffer.insert(self.current, line);
                 },
+                // delete line
+                'd' if line.len() == 1 => {
+                    self.buffer.remove(self.current);
+                }
                 // open file
                 'e' if line.starts_with("e ") => {
                     self.path = line[2..].into();
@@ -54,7 +59,7 @@ impl Editor {
                 // exit
                 'q' if line.len() == 1 => break,
                 // save file
-                'w' => {
+                'w' if line.len() == 1 => {
                     self.write_file(self.path.clone())?;
                 }
                 // select last line and print it
@@ -62,15 +67,29 @@ impl Editor {
                     self.current = self.buffer.len() - 1;
                     self.print_current_line();
                 }
-                // select line and print it
                 '0'..='9' => {
-                    let n = line.trim().parse::<usize>().unwrap() - 1;
-                    match self.buffer.get(n) {
-                        Some(_) => {
-                            self.current = n;
+                    if line.contains(",") {
+                        // print multiple lines
+                        let mut parts = line.split(",");
+                        let start = self.parse_line_number(parts.next().unwrap())?;
+                        let end = self.parse_line_number(parts.next().unwrap())?;
+
+                        let old_current = self.current;
+                        for i in start..=end {
+                            self.current = i;
                             self.print_current_line();
                         }
-                        None => println!("?"),
+                        self.current = old_current;
+                    } else {
+                        // select line and print it
+                        let n = self.parse_line_number(&line)?;
+                        match self.buffer.get(n) {
+                            Some(_) => {
+                                self.current = n;
+                                self.print_current_line();
+                            }
+                            None => println!("?"),
+                        }
                     }
                 }
                 _ => {
@@ -101,6 +120,16 @@ impl Editor {
         file.write_all(self.buffer.join("\n").as_bytes())?;
         self.print_buffer_size();
         Ok(())
+    }
+
+    // https://www.gnu.org/software/ed/manual/ed_manual.html#Line-addressing
+    fn parse_line_number(&self, s: &str) -> Result<usize, Box<dyn Error>> {
+        match s.chars().next().unwrap() {
+            '0'..='9' => Ok(s.parse::<usize>()? - 1),
+            '.' => Ok(self.current),
+            '$' => Ok(self.buffer.len() - 1),
+            _ => Err("invalid line number".into()),
+        }
     }
 
     fn read_line(&self) -> Result<String, io::Error> {
