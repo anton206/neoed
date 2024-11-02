@@ -1,4 +1,9 @@
-use std::{env, error::Error, fs, io};
+use std::{
+    env,
+    error::Error,
+    fs::{self},
+    io::{self, Write},
+};
 
 fn read_line() -> Result<String, io::Error> {
     let mut line = String::new();
@@ -6,22 +11,46 @@ fn read_line() -> Result<String, io::Error> {
     Ok(line.trim().to_owned())
 }
 
+fn get_buffer_size(buffer: &[String]) -> usize {
+    buffer.iter().map(|x| x.len()).sum()
+}
+
+fn open_file(
+    path: String,
+    buffer: &mut Vec<String>,
+    current: &mut usize,
+) -> Result<(), Box<dyn Error>> {
+    *buffer = fs::read_to_string(path)?
+        .trim()
+        .lines()
+        .map(str::to_owned)
+        .collect();
+    if !buffer.is_empty() {
+        *current = buffer.len() - 1;
+    }
+    println!("{}", get_buffer_size(buffer));
+    Ok(())
+}
+
+fn write_file(path: String, buffer: &[String]) -> Result<(), Box<dyn Error>> {
+    let mut file = fs::File::create(path)?;
+    file.write_all(buffer.join("\n").as_bytes())?;
+    println!("{}", get_buffer_size(buffer));
+    Ok(())
+}
+
 fn main() -> Result<(), Box<dyn Error>> {
     let mut args = env::args();
     _ = args.next();
 
+    let mut path = String::new();
     let mut buffer: Vec<String> = vec![];
     let mut current = 0;
 
-    if let Some(path) = args.next() {
-        let data = fs::read_to_string(path)?.trim().to_owned();
-        println!("{}", data.len());
-
-        buffer = data.lines().map(str::to_owned).collect();
-        if !buffer.is_empty() {
-            current = buffer.len() - 1;
-        }
-    };
+    if let Some(p) = args.next() {
+        path = p;
+        open_file(path.clone(), &mut buffer, &mut current)?;
+    }
 
     loop {
         let line = read_line()?;
@@ -36,8 +65,8 @@ fn main() -> Result<(), Box<dyn Error>> {
                 if line == "." {
                     break;
                 }
-                buffer.insert(current, line);
                 current += 1;
+                buffer.insert(current, line);
             },
             // print line number
             'n' if line.len() == 1 => {
@@ -53,6 +82,13 @@ fn main() -> Result<(), Box<dyn Error>> {
             '$' if line.len() == 1 => {
                 current = buffer.len() - 1;
                 println!("{}", buffer.get(current).unwrap());
+            }
+            'e' if line.starts_with("e ") => {
+                path = line[2..].into();
+                open_file(path.clone(), &mut buffer, &mut current)?;
+            }
+            'w' => {
+                write_file(path.clone(), &buffer)?;
             }
             // select line and print it
             '0'..='9' => {
