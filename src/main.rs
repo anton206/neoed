@@ -36,22 +36,29 @@ impl Editor {
                         break;
                     }
                     self.current += 1;
-                    self.buffer.insert(self.current, line);
+                    if self.buffer.is_empty() {
+                        self.buffer.push(line);
+                    } else {
+                        self.buffer.insert(self.current, line);
+                    }
                 },
                 // delete line
                 'd' if line.len() == 1 => {
-                    self.buffer.remove(self.current);
+                    if self.current >= self.buffer.len() {
+                        println!("?");
+                    } else {
+                        self.buffer.remove(self.current);
+                    }
                 }
                 // open file
                 'e' if line.starts_with("e ") => {
-                    self.path = line[2..].into();
-                    self.open_file(self.path.clone())?;
+                    self.open_file(line[2..].into());
                 }
                 // print line number
-                'n' if line.len() == 1 => {
-                    print!("{}\t", self.current + 1);
-                    self.print_current_line();
-                }
+                'n' if line.len() == 1 => match self.buffer.get(self.current) {
+                    Some(line) => println!("{}\t{}", self.current + 1, line),
+                    None => println!("?"),
+                },
                 // print line
                 'p' | '.' if line.len() == 1 => {
                     self.print_current_line();
@@ -100,19 +107,21 @@ impl Editor {
         Ok(())
     }
 
-    pub fn open_file(&mut self, path: String) -> Result<(), Box<dyn Error>> {
+    pub fn open_file(&mut self, path: String) {
         self.path.clone_from(&path);
 
-        self.buffer = fs::read_to_string(path)?
-            .trim()
-            .lines()
-            .map(str::to_owned)
-            .collect();
-        if !self.buffer.is_empty() {
-            self.current = self.buffer.len() - 1;
+        let data = fs::read_to_string(path);
+
+        match data {
+            Ok(data) => {
+                self.buffer = data.trim().lines().map(str::to_owned).collect();
+                if !self.buffer.is_empty() {
+                    self.current = self.buffer.len() - 1;
+                }
+                self.print_buffer_size();
+            }
+            Err(err) => println!("{}", err),
         }
-        self.print_buffer_size();
-        Ok(())
     }
 
     fn write_file(&self, path: String) -> Result<(), Box<dyn Error>> {
@@ -139,7 +148,10 @@ impl Editor {
     }
 
     fn print_current_line(&self) {
-        println!("{}", self.buffer.get(self.current).unwrap());
+        match self.buffer.get(self.current) {
+            Some(line) => println!("{}", line),
+            None => println!("?"),
+        }
     }
 
     fn print_buffer_size(&self) {
@@ -153,7 +165,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     let mut args = env::args();
     _ = args.next();
     if let Some(path) = args.next() {
-        editor.open_file(path.clone())?;
+        editor.open_file(path.clone());
     }
 
     editor.main_loop()?;
