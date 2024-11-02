@@ -35,10 +35,10 @@ impl Editor {
                     if line == "." {
                         break;
                     }
-                    self.current += 1;
                     if self.buffer.is_empty() {
                         self.buffer.push(line);
                     } else {
+                        self.current += 1;
                         self.buffer.insert(self.current, line);
                     }
                 },
@@ -54,6 +54,19 @@ impl Editor {
                 'e' if line.starts_with("e ") => {
                     self.open_file(line[2..].into());
                 }
+                // insert before current line
+                'i' if line.len() == 1 => loop {
+                    let line = self.read_line()?;
+                    if line == "." {
+                        break;
+                    }
+                    if self.buffer.is_empty() {
+                        self.buffer.push(line);
+                    } else {
+                        self.current += 1;
+                        self.buffer.insert(self.current - 1, line);
+                    }
+                },
                 // print line number
                 'n' if line.len() == 1 => match self.buffer.get(self.current) {
                     Some(line) => println!("{}\t{}", self.current + 1, line),
@@ -66,6 +79,10 @@ impl Editor {
                 // exit
                 'q' if line.len() == 1 => break,
                 // save file
+                'w' if line == "wq" => {
+                    self.write_file(self.path.clone())?;
+                    break;
+                }
                 'w' if line.len() == 1 => {
                     self.write_file(self.path.clone())?;
                 }
@@ -125,6 +142,7 @@ impl Editor {
     }
 
     fn write_file(&self, path: String) -> Result<(), Box<dyn Error>> {
+        assert!(!path.is_empty());
         let mut file = fs::File::create(path)?;
         file.write_all(self.buffer.join("\n").as_bytes())?;
         self.print_buffer_size();
