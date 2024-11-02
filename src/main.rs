@@ -10,12 +10,17 @@ fn main() -> Result<(), Box<dyn Error>> {
     let mut args = env::args();
     _ = args.next();
 
-    let mut buffer: Vec<String> = match args.next() {
-        Some(path) => fs::read_to_string(path)?
-            .split("\n")
-            .map(|s| s.to_string())
-            .collect(),
-        None => vec![],
+    let mut buffer: Vec<String> = vec![];
+    let mut current = 0;
+
+    if let Some(path) = args.next() {
+        let data = fs::read_to_string(path)?.trim().to_owned();
+        println!("{}", data.len());
+
+        buffer = data.lines().map(str::to_owned).collect();
+        if !buffer.is_empty() {
+            current = buffer.len() - 1;
+        }
     };
 
     loop {
@@ -24,24 +29,47 @@ fn main() -> Result<(), Box<dyn Error>> {
             continue;
         }
 
-        match line.as_str() {
-            "a" => loop {
+        match line.chars().next().unwrap() {
+            // append
+            'a' if line.len() == 1 => loop {
                 let line = read_line()?;
                 if line == "." {
                     break;
                 }
-                buffer.push(line);
+                buffer.insert(current, line);
+                current += 1;
             },
-            _ => {
-                if let Ok(n) = line.trim().parse::<usize>() {
-                    match buffer.get(n - 1) {
-                        Some(line) => println!("{}", line),
-                        None => println!("?"),
+            // print line number
+            'n' if line.len() == 1 => {
+                println!("{}\t{}", current + 1, buffer.get(current).unwrap());
+            }
+            // print line
+            'p' | '.' if line.len() == 1 => {
+                println!("{}", buffer.get(current).unwrap());
+            }
+            // exit
+            'q' if line.len() == 1 => break,
+            // select last line and print it
+            '$' if line.len() == 1 => {
+                current = buffer.len() - 1;
+                println!("{}", buffer.get(current).unwrap());
+            }
+            // select line and print it
+            '0'..='9' => {
+                let n = line.trim().parse::<usize>().unwrap() - 1;
+                match buffer.get(n) {
+                    Some(line) => {
+                        current = n;
+                        println!("{}", line);
                     }
-                } else {
-                    println!("?")
+                    None => println!("?"),
                 }
+            }
+            _ => {
+                println!("?")
             }
         }
     }
+
+    Ok(())
 }
