@@ -76,27 +76,56 @@ impl Editor {
                 'p' | '.' if line.len() == 1 => {
                     self.print_current_line();
                 }
+                // replace
+                's' => {
+                    let mut parts = line.split("/");
+                    _ = parts.next();
+                    let pattern = parts.next().unwrap();
+                    let sub = parts.next().unwrap();
+
+                    let re = regex::Regex::new(&regex::escape(pattern)).unwrap();
+
+                    match self.buffer.get(self.current) {
+                        Some(line) => {
+                            self.buffer[self.current] = re.replace_all(line, sub).to_string();
+                            self.print_current_line();
+                        }
+                        None => println!("?"),
+                    }
+                }
                 // exit
                 'q' if line.len() == 1 => break,
-                // save file
+                // save and quit
                 'w' if line == "wq" => {
-                    self.write_file(self.path.clone())?;
+                    self.save_file()?;
                     break;
                 }
+                // save as
+                'w' if line.starts_with("w ") => {
+                    self.path = line[2..].into();
+                    self.save_file()?;
+                }
+                // save
                 'w' if line.len() == 1 => {
-                    self.write_file(self.path.clone())?;
+                    self.save_file()?;
                 }
                 // select last line and print it
                 '$' if line.len() == 1 => {
-                    self.current = self.buffer.len() - 1;
-                    self.print_current_line();
+                    if !self.buffer.is_empty() {
+                        self.current = self.buffer.len() - 1;
+                        self.print_current_line();
+                    }
                 }
-                '0'..='9' => {
+                '1'..='9' => {
                     if line.contains(",") {
                         // print multiple lines
                         let mut parts = line.split(",");
                         let start = self.parse_line_number(parts.next().unwrap())?;
                         let end = self.parse_line_number(parts.next().unwrap())?;
+                        if start < 1 || end >= self.buffer.len() {
+                            println!("?");
+                            continue;
+                        }
 
                         let old_current = self.current;
                         for i in start..=end {
@@ -131,7 +160,7 @@ impl Editor {
 
         match data {
             Ok(data) => {
-                self.buffer = data.trim().lines().map(str::to_owned).collect();
+                self.buffer = data.lines().map(str::to_owned).collect();
                 if !self.buffer.is_empty() {
                     self.current = self.buffer.len() - 1;
                 }
@@ -141,9 +170,9 @@ impl Editor {
         }
     }
 
-    fn write_file(&self, path: String) -> Result<(), Box<dyn Error>> {
-        assert!(!path.is_empty());
-        let mut file = fs::File::create(path)?;
+    fn save_file(&self) -> Result<(), Box<dyn Error>> {
+        assert!(!self.path.is_empty());
+        let mut file = fs::File::create(self.path.clone())?;
         file.write_all(self.buffer.join("\n").as_bytes())?;
         self.print_buffer_size();
         Ok(())
@@ -152,7 +181,7 @@ impl Editor {
     // https://www.gnu.org/software/ed/manual/ed_manual.html#Line-addressing
     fn parse_line_number(&self, s: &str) -> Result<usize, Box<dyn Error>> {
         match s.chars().next().unwrap() {
-            '0'..='9' => Ok(s.parse::<usize>()? - 1),
+            '1'..='9' => Ok(s.parse::<usize>()? - 1),
             '.' => Ok(self.current),
             '$' => Ok(self.buffer.len() - 1),
             _ => Err("invalid line number".into()),
@@ -162,7 +191,8 @@ impl Editor {
     fn read_line(&self) -> Result<String, io::Error> {
         let mut line = String::new();
         io::stdin().read_line(&mut line)?;
-        Ok(line.trim().to_owned())
+        line.pop(); // TODO: does it work on windows?
+        Ok(line.to_owned())
     }
 
     fn print_current_line(&self) {
