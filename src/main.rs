@@ -5,6 +5,16 @@ use std::{
     io::{self, Write},
 };
 
+macro_rules! print_error {
+    ($msg:expr) => {
+        if true {
+            println!("{}", $msg);
+        } else {
+            println!("?");
+        }
+    };
+}
+
 struct Editor {
     path: String,
     buffer: Vec<String>,
@@ -45,7 +55,7 @@ impl Editor {
                 // delete line
                 'd' if line.len() == 1 => {
                     if self.current >= self.buffer.len() {
-                        println!("?");
+                        print_error!("Invalid address");
                     } else {
                         self.buffer.remove(self.current);
                     }
@@ -70,7 +80,7 @@ impl Editor {
                 // print line number
                 'n' if line.len() == 1 => match self.buffer.get(self.current) {
                     Some(line) => println!("{}\t{}", self.current + 1, line),
-                    None => println!("?"),
+                    None => print_error!("Invalid address"),
                 },
                 // print line
                 'p' | '.' if line.len() == 1 => {
@@ -80,17 +90,21 @@ impl Editor {
                 's' => {
                     let mut parts = line.split("/");
                     _ = parts.next();
-                    let pattern = parts.next().unwrap();
-                    let sub = parts.next().unwrap();
 
-                    let re = regex::Regex::new(&regex::escape(pattern)).unwrap();
+                    match (parts.next(), parts.next()) {
+                        (Some(pattern), Some(sub)) => {
+                            let re = regex::Regex::new(&regex::escape(pattern)).unwrap();
 
-                    match self.buffer.get(self.current) {
-                        Some(line) => {
-                            self.buffer[self.current] = re.replace_all(line, sub).to_string();
-                            self.print_current_line();
+                            match self.buffer.get(self.current) {
+                                Some(line) => {
+                                    self.buffer[self.current] =
+                                        re.replace_all(line, sub).to_string();
+                                    self.print_current_line();
+                                }
+                                None => print_error!("Invalid address"),
+                            }
                         }
-                        None => println!("?"),
+                        _ => print_error!("Missing pattern delimiter"),
                     }
                 }
                 // exit
@@ -123,7 +137,7 @@ impl Editor {
                         let start = self.parse_line_number(parts.next().unwrap())?;
                         let end = self.parse_line_number(parts.next().unwrap())?;
                         if start < 1 || end >= self.buffer.len() {
-                            println!("?");
+                            print_error!("Invalid address");
                             continue;
                         }
 
@@ -141,13 +155,11 @@ impl Editor {
                                 self.current = n;
                                 self.print_current_line();
                             }
-                            None => println!("?"),
+                            None => print_error!("Invalid address"),
                         }
                     }
                 }
-                _ => {
-                    println!("?")
-                }
+                _ => print_error!("Unknown command"),
             }
         }
         Ok(())
@@ -180,11 +192,11 @@ impl Editor {
 
     // https://www.gnu.org/software/ed/manual/ed_manual.html#Line-addressing
     fn parse_line_number(&self, s: &str) -> Result<usize, Box<dyn Error>> {
-        match s.chars().next().unwrap() {
-            '1'..='9' => Ok(s.parse::<usize>()? - 1),
-            '.' => Ok(self.current),
-            '$' => Ok(self.buffer.len() - 1),
-            _ => Err("invalid line number".into()),
+        match s.chars().next() {
+            Some('1'..='9') => Ok(s.parse::<usize>()? - 1),
+            Some('.') => Ok(self.current),
+            Some('$') => Ok(self.buffer.len() - 1),
+            _ => Err("failed to parse line number".into()),
         }
     }
 
@@ -198,7 +210,7 @@ impl Editor {
     fn print_current_line(&self) {
         match self.buffer.get(self.current) {
             Some(line) => println!("{}", line),
-            None => println!("?"),
+            None => print_error!("Invalid address"),
         }
     }
 
