@@ -15,6 +15,8 @@ macro_rules! print_error {
     };
 }
 
+type Address = (usize, usize);
+
 struct Editor {
     path: String,
     buffer: Vec<String>,
@@ -52,6 +54,14 @@ impl Editor {
                         self.buffer.insert(self.current, line);
                     }
                 },
+                // change line
+                'c' if line.len() == 1 => {
+                    if self.current >= self.buffer.len() {
+                        print_error!("Invalid address");
+                    } else {
+                        self.buffer[self.current] = self.read_line()?;
+                    }
+                }
                 // delete line
                 'd' if line.len() == 1 => {
                     if self.current >= self.buffer.len() {
@@ -77,13 +87,13 @@ impl Editor {
                         self.buffer.insert(self.current - 1, line);
                     }
                 },
-                // print line number
+                // print the line preceded by its line number
                 'n' if line.len() == 1 => match self.buffer.get(self.current) {
                     Some(line) => println!("{}\t{}", self.current + 1, line),
                     None => print_error!("Invalid address"),
                 },
                 // print line
-                'p' | '.' if line.len() == 1 => {
+                'p' if line.len() == 1 => {
                     self.print_current_line();
                 }
                 // replace
@@ -123,42 +133,27 @@ impl Editor {
                 'w' if line.len() == 1 => {
                     self.save_file()?;
                 }
-                // select last line and print it
-                '$' if line.len() == 1 => {
-                    if !self.buffer.is_empty() {
-                        self.current = self.buffer.len() - 1;
+                // select an address and print it
+                '1'..='9' | '.' | '$' => {
+                    let (start, end) = self.parse_address(&line)?;
+                    if end >= self.buffer.len() {
+                        print_error!("Invalid address");
+                        continue;
+                    }
+
+                    for i in start..=end {
+                        self.current = i;
                         self.print_current_line();
                     }
+                    self.current = start;
                 }
-                '1'..='9' => {
-                    if line.contains(",") {
-                        // print multiple lines
-                        let mut parts = line.split(",");
-                        let start = self.parse_line_number(parts.next().unwrap())?;
-                        let end = self.parse_line_number(parts.next().unwrap())?;
-                        if start < 1 || end >= self.buffer.len() {
-                            print_error!("Invalid address");
-                            continue;
-                        }
-
-                        let old_current = self.current;
-                        for i in start..=end {
-                            self.current = i;
-                            self.print_current_line();
-                        }
-                        self.current = old_current;
-                    } else {
-                        // select line and print it
-                        let n = self.parse_line_number(&line)?;
-                        match self.buffer.get(n) {
-                            Some(_) => {
-                                self.current = n;
-                                self.print_current_line();
-                            }
-                            None => print_error!("Invalid address"),
-                        }
-                    }
-                }
+                // print the line number
+                '=' => match self.buffer.get(self.current) {
+                    Some(_) => println!("{}", self.current + 1),
+                    None => print_error!("Invalid address"),
+                },
+                // comment
+                '#' => {}
                 _ => print_error!("Unknown command"),
             }
         }
@@ -191,6 +186,18 @@ impl Editor {
     }
 
     // https://www.gnu.org/software/ed/manual/ed_manual.html#Line-addressing
+    fn parse_address(&self, s: &str) -> Result<Address, Box<dyn Error>> {
+        if s.contains(",") {
+            let mut parts = s.split(",");
+            let start = self.parse_line_number(parts.next().unwrap())?;
+            let end = self.parse_line_number(parts.next().unwrap())?;
+            Ok((start, end))
+        } else {
+            let n = self.parse_line_number(s)?;
+            Ok((n, n))
+        }
+    }
+
     fn parse_line_number(&self, s: &str) -> Result<usize, Box<dyn Error>> {
         match s.chars().next() {
             Some('1'..='9') => Ok(s.parse::<usize>()? - 1),
