@@ -3,11 +3,12 @@ use std::{
     error::Error,
     fs::{self},
     io::{self, Write},
+    process::{Command, Stdio},
 };
 
 macro_rules! print_error {
     ($msg:expr) => {
-        if true {
+        if false {
             println!("{}", $msg);
         } else {
             println!("?");
@@ -21,6 +22,7 @@ struct Editor {
     path: String,
     buffer: Vec<String>,
     current: usize,
+    run_command: String,
 }
 
 impl Editor {
@@ -29,12 +31,13 @@ impl Editor {
             path: String::new(),
             buffer: vec![],
             current: 0,
+            run_command: String::new(),
         }
     }
 
     pub fn main_loop(&mut self) -> Result<(), Box<dyn Error>> {
         loop {
-            let line = self.read_line()?;
+            let line = Editor::read_line()?;
             if line.is_empty() {
                 continue;
             }
@@ -43,7 +46,7 @@ impl Editor {
             match line.chars().next().unwrap() {
                 // insert after current line
                 'a' if line.len() == 1 => loop {
-                    let line = self.read_line()?;
+                    let line = Editor::read_line()?;
                     if line == "." {
                         break;
                     }
@@ -59,7 +62,7 @@ impl Editor {
                     if self.current >= self.buffer.len() {
                         print_error!("Invalid address");
                     } else {
-                        self.buffer[self.current] = self.read_line()?;
+                        self.buffer[self.current] = Editor::read_line()?;
                     }
                 }
                 // delete line
@@ -76,7 +79,7 @@ impl Editor {
                 }
                 // insert before current line
                 'i' if line.len() == 1 => loop {
-                    let line = self.read_line()?;
+                    let line = Editor::read_line()?;
                     if line == "." {
                         break;
                     }
@@ -95,6 +98,18 @@ impl Editor {
                 // print line
                 'p' if line.len() == 1 => {
                     self.print_current_line();
+                }
+                // run a shell command
+                'r' => {
+                    if line.contains(" ") {
+                        self.run_command = (&line[2..]).into();
+                    }
+
+                    if self.run_command.is_empty() {
+                        print_error!("Empty command");
+                    } else {
+                        Editor::run_command(self.run_command.clone())?;
+                    }
                 }
                 // replace
                 's' => {
@@ -207,13 +222,6 @@ impl Editor {
         }
     }
 
-    fn read_line(&self) -> Result<String, io::Error> {
-        let mut line = String::new();
-        io::stdin().read_line(&mut line)?;
-        line.pop(); // TODO: does it work on windows?
-        Ok(line.to_owned())
-    }
-
     fn print_current_line(&self) {
         match self.buffer.get(self.current) {
             Some(line) => println!("{}", line),
@@ -223,6 +231,22 @@ impl Editor {
 
     fn print_buffer_size(&self) {
         println!("{}", self.buffer.iter().map(|x| x.len()).sum::<usize>());
+    }
+
+    fn run_command(command: String) -> Result<(), Box<dyn Error>> {
+        if cfg!(target_os = "windows") {
+            Command::new("cmd").arg("/C").arg(command).spawn()?.wait()?;
+        } else {
+            Command::new("sh").arg("-c").arg(command).spawn()?.wait()?;
+        }
+        Ok(())
+    }
+
+    fn read_line() -> Result<String, io::Error> {
+        let mut line = String::new();
+        io::stdin().read_line(&mut line)?;
+        line.pop(); // TODO: does it work on windows?
+        Ok(line.to_owned())
     }
 }
 
